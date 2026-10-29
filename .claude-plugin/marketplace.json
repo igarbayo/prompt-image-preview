@@ -1,0 +1,5 @@
+{
+  "name": "prompt-image-preview",
+  "owner": { "name": "Ignacio Garbayo", "url": "https://github.com/igarbayo" },
+  "plugins": [{ "name": "prompt-image-preview", "source": "./" }]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "prompt-image-preview",
+  "version": "0.1.0",
+  "description": "Preview pasted images above the Claude Code prompt before sending, and open each one with a click",
+  "author": { "name": "Ignacio Garbayo", "url": "https://github.com/igarbayo" },
+  "homepage": "https://github.com/igarbayo/prompt-image-preview",
+  "repository": "https://github.com/igarbayo/prompt-image-preview",
+  "license": "MIT",
+  "keywords": ["images", "clipboard", "preview", "orca", "kitty"],
+  "types": "./types/index.d.ts"
+}
