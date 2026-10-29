@@ -2,6 +2,8 @@
 
 A Claude Code mod that previews pasted images above the prompt before you send them.
 
+![Pasting three images shows a thumbnail of each above the prompt; removing an image from the prompt removes its thumbnail](docs/demo.gif)
+
 When you paste an image, Claude Code only shows `[Image #1]` in the prompt. This mod draws a thumbnail of each pasted image above the prompt, in a row, with its number under it. Click a thumbnail to open the full image in Preview. Remove an `[Image #N]` from the prompt and its thumbnail goes away; send the message and the row clears.
 
 In a terminal that cannot draw images, each image is listed as `Image #N WIDTHxHEIGHT`, and clicking the label opens it.
