@@ -1,5 +1,15 @@
 {
   "name": "prompt-image-preview",
-  "owner": { "name": "Ignacio Garbayo", "url": "https://github.com/igarbayo" },
-  "plugins": [{ "name": "prompt-image-preview", "source": "./" }]
+  "description": "Thumbnails of pasted images above the Claude Code prompt, with a close button to remove each one",
+  "owner": {
+    "name": "Ignacio Garbayo",
+    "url": "https://github.com/igarbayo"
+  },
+  "plugins": [
+    {
+      "name": "prompt-image-preview",
+      "source": "./",
+      "version": "0.2.0"
+    }
+  ]
 }

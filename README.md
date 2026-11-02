@@ -11,7 +11,7 @@ In a terminal that cannot draw images, each image is listed as `Image #N WIDTHxH
 ## Requirements
 
 - macOS (the mod uses `osascript`, `sips` and `open`)
-- Claude Code with mod support
+- Claude Code 2.1.300 or newer (older versions do not have the `prompt.edit` event the mod uses, and do not load it)
 - A terminal that draws kitty graphics for thumbnails: Ghostty, kitty, WezTerm, or Orca with the setting below
 
 ## Install
