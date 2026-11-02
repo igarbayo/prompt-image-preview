@@ -8,6 +8,7 @@ const images = atom({ plugin: 'prompt-image-preview', key: 'images' } as const, 
 const PLACEHOLDER = /\[Image #(\d+)\]/g
 const COLUMNS = 18
 const MAX_ROWS = 7
+const MAX_COLUMNS = 36
 // The close badge sits on the thumbnail's top edge, half over the picture and
 // half over a transparent margin of one column on the right and one row on top.
 // Its radius, and how far its centre stands in from the right edge, in columns.
@@ -96,11 +97,23 @@ export function withoutPlaceholder(text: string, cursor: number, n: number): { t
   return { text: text.slice(0, start) + text.slice(end), cursor: moved }
 }
 
-export function rowsFor(image: CapturedImage): number {
+// The cells a thumbnail takes, matching the picture's proportions so the badge
+// lands on its corner whether the terminal stretches a picture to its box
+// (kitty, Ghostty) or keeps its proportions inside it (Orca). A cell is about
+// twice as tall as it is wide.
+export function sizeFor(image: CapturedImage): { columns: number; rows: number } {
   if (!image.width || !image.height) {
-    return 3
+    return { columns: COLUMNS, rows: 3 }
   }
-  return Math.min(MAX_ROWS, Math.max(2, Math.round((COLUMNS * image.height) / image.width / 2)))
+  const ratio = image.height / image.width
+  const rows = (COLUMNS * ratio) / 2
+  if (rows > MAX_ROWS) {
+    return { columns: Math.max(4, Math.round((MAX_ROWS * 2) / ratio)), rows: MAX_ROWS }
+  }
+  if (rows < 2) {
+    return { columns: Math.min(MAX_COLUMNS, Math.round(4 / ratio)), rows: 2 }
+  }
+  return { columns: COLUMNS, rows: Math.round(rows) }
 }
 
 async function cacheDir($: Api): Promise<string> {
@@ -108,7 +121,7 @@ async function cacheDir($: Api): Promise<string> {
   return `${home}/Library/Caches/claude-prompt-image-preview/${$.session.id()}`
 }
 
-async function thumbnail($: Api, path: string, size: number, rows: number): Promise<string | null> {
+async function thumbnail($: Api, path: string, size: number, columns: number, rows: number): Promise<string | null> {
   const out = `${path}.${size}.png`
   const { exitCode } = await $.process.run(['sips', '-Z', String(size), path, '--out', out])
   if (exitCode !== 0) {
@@ -116,7 +129,7 @@ async function thumbnail($: Api, path: string, size: number, rows: number): Prom
   }
   await $.process.run([
     'osascript', '-l', 'JavaScript', '-e', BADGE, out,
-    String(COLUMNS), String(rows), String(BADGE_GEOMETRY.radius), String(BADGE_GEOMETRY.inset),
+    String(columns), String(rows), String(BADGE_GEOMETRY.radius), String(BADGE_GEOMETRY.inset),
   ])
   const { base64 } = await $.fs.read(out, { as: 'bytes' })
   return base64
@@ -148,9 +161,9 @@ async function capture($: Api, n: number): Promise<CapturedImage> {
     return { n, path: null, width: 0, height: 0 }
   }
   const image = { n, path, width: Number(size[1]), height: Number(size[2]) }
-  const rows = rowsFor(image)
-  const even = await thumbnail($, path, 256, rows)
-  const odd = await thumbnail($, path, 255, rows)
+  const { columns, rows } = sizeFor(image)
+  const even = await thumbnail($, path, 256, columns, rows)
+  const odd = await thumbnail($, path, 255, columns, rows)
   if (even && odd) {
     thumbnails.set(path, [even, odd])
   }
@@ -283,24 +296,24 @@ export const register: Register = on => {
         {list.map(image => {
           const variants = image.path ? thumbnails.get(image.path) : undefined
           if (drawsImages && terminal && variants) {
-            const rows = rowsFor(image)
+            const { columns, rows } = sizeFor(image)
             const { Client, Image } = terminal
             return (
               <Box key={`item${image.n}`} flexDirection="column">
-                <Box position="relative" width={COLUMNS + 1} height={rows + 1}>
+                <Box position="relative" width={columns + 1} height={rows + 1}>
                   <Image
                     key={`img${image.n}`}
                     source={{ png: frame % 2 === 0 ? variants[0] : variants[1] }}
-                    columns={COLUMNS + 1}
+                    columns={columns + 1}
                     rows={rows + 1}
                     alt={`Image #${image.n}`}
                   />
-                  <Box position="absolute" top={0} left={0} width={COLUMNS + 1} height={rows + 1}>
+                  <Box position="absolute" top={0} left={0} width={columns + 1} height={rows + 1}>
                     <Client
                       key={`click${image.n}`}
                       module="./click.tsx"
-                      props={{ n: image.n, columns: COLUMNS, rows, badge: BADGE_GEOMETRY }}
-                      width={COLUMNS + 1}
+                      props={{ n: image.n, columns, rows, badge: BADGE_GEOMETRY }}
+                      width={columns + 1}
                       height={rows + 1}
                     />
                   </Box>

@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { isCloseHit, isOnPicture } from './click'
-import { placeholders, withoutPlaceholder } from './register'
+import { placeholders, sizeFor, withoutPlaceholder } from './register'
 
 const BAND = {
   plugin: 'prompt-image-preview',
@@ -32,6 +32,16 @@ test('without image support the band lists each image as a pressable label', asy
   expect(await ui.find({ type: 'Button', key: 'open2' })).toBeTruthy()
   expect(await ui.find({ type: 'Button', key: 'remove2' })).toBeTruthy()
   await ui.unmount()
+})
+
+test('a thumbnail box keeps the picture proportions with cells twice as tall as wide', () => {
+  const box = (width: number, height: number) => sizeFor({ n: 1, path: '/tmp/1.png', width, height })
+  expect(box(800, 600)).toEqual({ columns: 18, rows: 7 })
+  expect(box(1920, 1080)).toEqual({ columns: 18, rows: 5 })
+  expect(box(600, 600)).toEqual({ columns: 14, rows: 7 })
+  expect(box(1200, 1800)).toEqual({ columns: 9, rows: 7 })
+  expect(box(3000, 600)).toEqual({ columns: 20, rows: 2 })
+  expect(box(0, 0)).toEqual({ columns: 18, rows: 3 })
 })
 
 test('removing a placeholder takes one space with it and keeps the cursor in place', () => {
