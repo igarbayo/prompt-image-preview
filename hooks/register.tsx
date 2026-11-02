@@ -8,6 +8,11 @@ const images = atom({ plugin: 'prompt-image-preview', key: 'images' } as const, 
 const PLACEHOLDER = /\[Image #(\d+)\]/g
 const COLUMNS = 18
 const MAX_ROWS = 7
+// The close badge sits on the thumbnail's top edge, half over the picture and
+// half over a transparent margin of one column on the right and one row on top.
+// Its radius, and how far its centre stands in from the right edge, in columns.
+// click.tsx hit-tests the same shape.
+const BADGE_GEOMETRY = { radius: 1.25, inset: 0.6 }
 const IMAGE_TERMINALS = ['ghostty', 'kitty', 'WezTerm']
 
 const CAPTURE = `
@@ -27,6 +32,42 @@ function run(argv) {
 }
 `
 
+const BADGE = `
+function run(argv) {
+  ObjC.import('AppKit')
+  const [path, columns, rows, radius, inset] = [argv[0], ...argv.slice(1).map(Number)]
+  const src = $.NSBitmapImageRep.imageRepWithData($.NSData.dataWithContentsOfFile(path))
+  if (src.isNil()) return 'none'
+  const w = Number(src.pixelsWide)
+  const h = Number(src.pixelsHigh)
+  const col = w / columns
+  const row = h / rows
+  const rep = $.NSBitmapImageRep.alloc.initWithBitmapDataPlanesPixelsWidePixelsHighBitsPerSampleSamplesPerPixelHasAlphaIsPlanarColorSpaceNameBytesPerRowBitsPerPixel(
+    null, Math.round(w + col), Math.round(h + row), 8, 4, true, false, $.NSCalibratedRGBColorSpace, 0, 0)
+  $.NSGraphicsContext.saveGraphicsState
+  $.NSGraphicsContext.setCurrentContext($.NSGraphicsContext.graphicsContextWithBitmapImageRep(rep))
+  src.drawInRect($.NSMakeRect(0, 0, w, h))
+  const rx = radius * col
+  const ry = (radius / 2) * row
+  const cx = w - inset * col
+  const cy = h
+  $.NSColor.colorWithCalibratedRedGreenBlueAlpha(0, 0, 0, 0.85).setFill
+  $.NSBezierPath.bezierPathWithOvalInRect($.NSMakeRect(cx - rx, cy - ry, 2 * rx, 2 * ry)).fill
+  const x = $.NSBezierPath.bezierPath
+  x.moveToPoint($.NSMakePoint(cx - rx * 0.42, cy - ry * 0.42))
+  x.lineToPoint($.NSMakePoint(cx + rx * 0.42, cy + ry * 0.42))
+  x.moveToPoint($.NSMakePoint(cx - rx * 0.42, cy + ry * 0.42))
+  x.lineToPoint($.NSMakePoint(cx + rx * 0.42, cy - ry * 0.42))
+  x.setLineWidth(Math.max(1.5, Math.min(rx, ry) * 0.22))
+  x.setLineCapStyle($.NSLineCapStyleRound)
+  $.NSColor.whiteColor.setStroke
+  x.stroke
+  $.NSGraphicsContext.restoreGraphicsState
+  rep.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $({})).writeToFileAtomically(path, true)
+  return 'ok'
+}
+`
+
 let canDrawImages = false
 let bandRequestId: string | null = null
 let frame = 0
@@ -36,6 +77,23 @@ const pending = new Set<number>()
 
 export function placeholders(text: string): number[] {
   return [...text.matchAll(PLACEHOLDER)].map(match => Number(match[1]))
+}
+
+export function withoutPlaceholder(text: string, cursor: number, n: number): { text: string; cursor: number } {
+  const token = `[Image #${n}]`
+  let start = text.indexOf(token)
+  if (start === -1) {
+    return { text, cursor }
+  }
+  let end = start + token.length
+  if (text[end] === ' ') {
+    end += 1
+  } else if (start > 0 && text[start - 1] === ' ') {
+    start -= 1
+  }
+  const removed = end - start
+  const moved = cursor >= end ? cursor - removed : cursor > start ? start : cursor
+  return { text: text.slice(0, start) + text.slice(end), cursor: moved }
 }
 
 export function rowsFor(image: CapturedImage): number {
@@ -50,12 +108,16 @@ async function cacheDir($: Api): Promise<string> {
   return `${home}/Library/Caches/claude-prompt-image-preview/${$.session.id()}`
 }
 
-async function thumbnail($: Api, path: string, size: number): Promise<string | null> {
+async function thumbnail($: Api, path: string, size: number, rows: number): Promise<string | null> {
   const out = `${path}.${size}.png`
   const { exitCode } = await $.process.run(['sips', '-Z', String(size), path, '--out', out])
   if (exitCode !== 0) {
     return null
   }
+  await $.process.run([
+    'osascript', '-l', 'JavaScript', '-e', BADGE, out,
+    String(COLUMNS), String(rows), String(BADGE_GEOMETRY.radius), String(BADGE_GEOMETRY.inset),
+  ])
   const { base64 } = await $.fs.read(out, { as: 'bytes' })
   return base64
 }
@@ -85,12 +147,14 @@ async function capture($: Api, n: number): Promise<CapturedImage> {
   if (exitCode !== 0 || !size) {
     return { n, path: null, width: 0, height: 0 }
   }
-  const even = await thumbnail($, path, 256)
-  const odd = await thumbnail($, path, 255)
+  const image = { n, path, width: Number(size[1]), height: Number(size[2]) }
+  const rows = rowsFor(image)
+  const even = await thumbnail($, path, 256, rows)
+  const odd = await thumbnail($, path, 255, rows)
   if (even && odd) {
     thumbnails.set(path, [even, odd])
   }
-  return { n, path, width: Number(size[1]), height: Number(size[2]) }
+  return image
 }
 
 async function sync($: Api, text: string) {
@@ -118,6 +182,18 @@ async function open($: Api, n: number) {
   if (image?.path) {
     await $.process.run(['open', image.path])
   }
+}
+
+async function remove($: Api, n: number) {
+  const box = await $.prompt.read()
+  const next = withoutPlaceholder(box.text, box.cursor, n)
+  if (next.text !== box.text) {
+    const { isFilled } = await $.prompt.fill({ text: next.text, mode: 'replace', cursor: next.cursor })
+    if (!isFilled) {
+      return
+    }
+  }
+  await update($, images, list => list.filter(one => one.n !== n))
 }
 
 async function refresh($: Api) {
@@ -178,9 +254,9 @@ export const register: Register = on => {
   })
 
   on('ui.message', async ($, e, next) => {
-    const data = e.data as { n?: unknown }
+    const data = e.data as { n?: unknown; action?: unknown }
     if (e.module.endsWith('click.tsx') && typeof data?.n === 'number') {
-      await open($, data.n)
+      await (data.action === 'remove' ? remove($, data.n) : open($, data.n))
     }
     return next(e)
   })
@@ -211,34 +287,45 @@ export const register: Register = on => {
             const { Client, Image } = terminal
             return (
               <Box key={`item${image.n}`} flexDirection="column">
-                <Box position="relative" width={COLUMNS} height={rows}>
+                <Box position="relative" width={COLUMNS + 1} height={rows + 1}>
                   <Image
                     key={`img${image.n}`}
                     source={{ png: frame % 2 === 0 ? variants[0] : variants[1] }}
-                    columns={COLUMNS}
-                    rows={rows}
+                    columns={COLUMNS + 1}
+                    rows={rows + 1}
                     alt={`Image #${image.n}`}
                   />
-                  <Box position="absolute" top={0} left={0} width={COLUMNS} height={rows}>
-                    <Client key={`click${image.n}`} module="./click.tsx" props={{ n: image.n }} width={COLUMNS} height={rows} />
+                  <Box position="absolute" top={0} left={0} width={COLUMNS + 1} height={rows + 1}>
+                    <Client
+                      key={`click${image.n}`}
+                      module="./click.tsx"
+                      props={{ n: image.n, columns: COLUMNS, rows, badge: BADGE_GEOMETRY }}
+                      width={COLUMNS + 1}
+                      height={rows + 1}
+                    />
                   </Box>
                 </Box>
                 <Text dimColor>#{image.n}</Text>
               </Box>
             )
           }
-          return image.path ? (
-            <Button
-              key={`open${image.n}`}
-              plain
-              dimColor
-              label={`Image #${image.n} ${image.width}x${image.height}`}
-              onPress={() => void open($, image.n)}
-            />
-          ) : (
-            <Text key={`missing${image.n}`} dimColor>
-              Image #{image.n} (not captured)
-            </Text>
+          return (
+            <Box key={`item${image.n}`} flexDirection="row" columnGap={1}>
+              {image.path ? (
+                <Button
+                  key={`open${image.n}`}
+                  plain
+                  dimColor
+                  label={`Image #${image.n} ${image.width}x${image.height}`}
+                  onPress={() => void open($, image.n)}
+                />
+              ) : (
+                <Text key={`missing${image.n}`} dimColor>
+                  Image #{image.n} (not captured)
+                </Text>
+              )}
+              <Button key={`remove${image.n}`} plain dimColor label="✕" onPress={() => void remove($, image.n)} />
+            </Box>
           )
         })}
       </Box>

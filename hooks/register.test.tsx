@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
-import { placeholders } from './register'
+import { isCloseHit, isOnPicture } from './click'
+import { placeholders, withoutPlaceholder } from './register'
 
 const BAND = {
   plugin: 'prompt-image-preview',
@@ -29,5 +30,57 @@ test('without image support the band lists each image as a pressable label', asy
   const ui = await $.ui.mount(BAND)
 
   expect(await ui.find({ type: 'Button', key: 'open2' })).toBeTruthy()
+  expect(await ui.find({ type: 'Button', key: 'remove2' })).toBeTruthy()
   await ui.unmount()
+})
+
+test('removing a placeholder takes one space with it and keeps the cursor in place', () => {
+  expect(withoutPlaceholder('look [Image #1] and [Image #2]', 30, 1)).toEqual({ text: 'look and [Image #2]', cursor: 19 })
+  expect(withoutPlaceholder('look [Image #1] and [Image #2]', 30, 2)).toEqual({ text: 'look [Image #1] and', cursor: 19 })
+  expect(withoutPlaceholder('[Image #3]', 10, 3)).toEqual({ text: '', cursor: 0 })
+  expect(withoutPlaceholder('[Image #1] hi', 13, 1)).toEqual({ text: 'hi', cursor: 2 })
+  expect(withoutPlaceholder('hi [Image #1] there', 1, 1)).toEqual({ text: 'hi there', cursor: 1 })
+  expect(withoutPlaceholder('hi [Image #1] there', 8, 1)).toEqual({ text: 'hi there', cursor: 3 })
+  expect(withoutPlaceholder('[Image #12] [Image #1]', 22, 1)).toEqual({ text: '[Image #12]', cursor: 11 })
+  expect(withoutPlaceholder('no images', 3, 1)).toEqual({ text: 'no images', cursor: 3 })
+})
+
+test('the close badge straddles the top right corner and the margin opens nothing', () => {
+  const badge = { radius: 1.25, inset: 0.6 }
+  expect(isCloseHit(17.5, 0.5, 18, badge)).toBe(true)
+  expect(isCloseHit(17.5, 1.5, 18, badge)).toBe(true)
+  expect(isCloseHit(18.5, 0.5, 18, badge)).toBe(true)
+  expect(isCloseHit(16.5, 1.5, 18, badge)).toBe(true)
+  expect(isCloseHit(9.5, 1.5, 18, badge)).toBe(false)
+  expect(isCloseHit(17.5, 3.5, 18, badge)).toBe(false)
+  expect(isOnPicture(9.5, 2.5, 18)).toBe(true)
+  expect(isOnPicture(9.5, 0.5, 18)).toBe(false)
+  expect(isOnPicture(18.5, 4.5, 18)).toBe(false)
+})
+
+test('pressing the close button takes the image out of the prompt', async ($, on) => {
+  let stored = [
+    { n: 1, path: '/tmp/1.png', width: 800, height: 600 },
+    { n: 2, path: '/tmp/2.png', width: 800, height: 600 },
+  ]
+  let filled: unknown
+  let version = 1
+  on('state.get', () => ({ value: { value: stored, version } }))
+  on('state.set', (_$, e) => {
+    stored = e.value as typeof stored
+    version += 1
+    return { value: { isSet: true, version } }
+  })
+  on('prompt.read', () => ({ value: { text: 'see [Image #1] [Image #2]', cursor: 25 } }))
+  on('prompt.fill', (_$, e) => {
+    filled = e
+    return { isFilled: true, text: 'see [Image #1]', cursor: 14 }
+  })
+
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'remove2' })
+  await ui.unmount()
+
+  expect(filled).toMatchObject({ text: 'see [Image #1]', mode: 'replace', cursor: 14 })
+  expect(stored.map(one => one.n)).toEqual([1])
 })

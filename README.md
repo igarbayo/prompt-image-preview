@@ -4,9 +4,9 @@ A Claude Code mod that previews pasted images above the prompt before you send t
 
 ![Pasting three images shows a thumbnail of each above the prompt; removing an image from the prompt removes its thumbnail](docs/demo.gif)
 
-When you paste an image, Claude Code only shows `[Image #1]` in the prompt. This mod draws a thumbnail of each pasted image above the prompt, in a row, with its number under it. Click a thumbnail to open the full image in Preview. Remove an `[Image #N]` from the prompt and its thumbnail goes away; send the message and the row clears.
+When you paste an image, Claude Code only shows `[Image #1]` in the prompt. This mod draws a thumbnail of each pasted image above the prompt, in a row, with its number under it. Click a thumbnail to open the full image in Preview, or click the black circle with a white x that sits on its top-right corner to take the image out of the prompt. Remove an `[Image #N]` from the prompt and its thumbnail goes away; send the message and the row clears.
 
-In a terminal that cannot draw images, each image is listed as `Image #N WIDTHxHEIGHT`, and clicking the label opens it.
+In a terminal that cannot draw images, each image is listed as `Image #N WIDTHxHEIGHT`: clicking the label opens it, and the `✕` beside it takes it out of the prompt.
 
 ## Requirements
 
@@ -47,6 +47,7 @@ Copy the skill folder to `~/.claude/skills/` and ask Claude Code to install prom
 ## How it works
 
 - When `[Image #N]` appears in the prompt, the image is still on the clipboard. The mod saves it to `~/Library/Caches/claude-prompt-image-preview/<session>/` and makes a small thumbnail. The folder is deleted when the session ends.
+- The close button is drawn into the thumbnail itself, over its top-right corner and a transparent margin, so it stays round over any image. Clicking it deletes `[Image #N]` from the prompt, and Claude Code no longer sends that image.
 - Thumbnails are redrawn when you type in the prompt.
 
 ## Known limits
