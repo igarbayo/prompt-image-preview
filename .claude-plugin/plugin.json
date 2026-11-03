@@ -1,7 +1,7 @@
 {
   "name": "prompt-image-preview",
-  "version": "0.2.1",
-  "description": "Preview pasted images above the Claude Code prompt, open each one with a click, and remove it from the prompt with its close button",
+  "version": "0.3.0",
+  "description": "Preview pasted images above the Claude Code prompt, and show the images of sent and received messages inside the conversation",
   "author": {
     "name": "Ignacio Garbayo",
     "url": "https://github.com/igarbayo"
@@ -18,5 +18,18 @@
     "ghostty"
   ],
   "types": "./types/index.d.ts",
-  "icon": "./.claude-plugin/icon.png"
+  "icon": "./.claude-plugin/icon.png",
+  "userConfig": {
+    "messageImages": {
+      "type": "string",
+      "title": "Images in the conversation",
+      "description": "Which messages show their images in the conversation: all (sent and received), sent (only yours) or off",
+      "default": "all",
+      "options": [
+        "all",
+        "sent",
+        "off"
+      ]
+    }
+  }
 }

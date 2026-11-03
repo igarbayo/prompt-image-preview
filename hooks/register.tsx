@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Api, Register } from 'claude-code'
 
 import type { CapturedImage } from '../types'
+import { openPath, readSubmitted, registerMessages, rememberSubmitted } from './messages'
 
 const images = atom({ plugin: 'prompt-image-preview', key: 'images' } as const, [])
 
@@ -118,7 +119,7 @@ export function sizeFor(image: CapturedImage): { columns: number; rows: number }
 
 async function cacheDir($: Api): Promise<string> {
   const home = await $.env.get('HOME')
-  return `${home}/Library/Caches/claude-prompt-image-preview/${$.session.id()}`
+  return `${home}/Library/Caches/claude-prompt-image-preview/${await $.session.id()}`
 }
 
 async function thumbnail($: Api, path: string, size: number, columns: number, rows: number): Promise<string | null> {
@@ -227,7 +228,9 @@ async function refresh($: Api) {
   }
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  registerMessages(on, options, () => canDrawImages)
+
   on('session.start', async ($, e, next) => {
     const forced = await $.env.get('CLAUDE_CODE_FORCE_TERMINAL_IMAGES')
     const terminal = await $.env.get('TERM_PROGRAM')
@@ -256,8 +259,12 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
+    const bytes = await readSubmitted($, e.attachments).catch((): string[] => [])
     const result = await next(e)
     await update($, images, () => []).catch(() => undefined)
+    if (!result.drop) {
+      rememberSubmitted($, result.text ?? e.text, bytes)
+    }
     return result
   })
 
@@ -267,8 +274,10 @@ export const register: Register = on => {
   })
 
   on('ui.message', async ($, e, next) => {
-    const data = e.data as { n?: unknown; action?: unknown }
-    if (e.module.endsWith('click.tsx') && typeof data?.n === 'number') {
+    const data = e.data as { n?: unknown; path?: unknown; action?: unknown }
+    if (e.module.endsWith('click.tsx') && typeof data?.path === 'string') {
+      await openPath($, data.path)
+    } else if (e.module.endsWith('click.tsx') && typeof data?.n === 'number') {
       await (data.action === 'remove' ? remove($, data.n) : open($, data.n))
     }
     return next(e)

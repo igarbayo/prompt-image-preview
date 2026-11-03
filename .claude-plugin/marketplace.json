@@ -1,6 +1,6 @@
 {
   "name": "prompt-image-preview",
-  "description": "Thumbnails of pasted images above the Claude Code prompt, with a close button to remove each one",
+  "description": "Thumbnails of pasted images above the Claude Code prompt, and the images of sent and received messages in the conversation",
   "owner": {
     "name": "Ignacio Garbayo",
     "url": "https://github.com/igarbayo"
@@ -9,7 +9,7 @@
     {
       "name": "prompt-image-preview",
       "source": "./",
-      "version": "0.2.1"
+      "version": "0.3.0"
     }
   ]
 }

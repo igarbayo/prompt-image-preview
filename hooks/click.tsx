@@ -1,7 +1,7 @@
 import type { ClientModule } from 'claude-code'
 
 type Badge = { radius: number; inset: number }
-type Props = { n: number; columns?: number; rows?: number; badge?: Badge }
+type Props = { n?: number; path?: string; columns?: number; rows?: number; badge?: Badge }
 
 // The region is the picture (columns by rows) with a transparent margin of one
 // column on its right and one row above it. x and y count from the region's
@@ -25,12 +25,18 @@ const Click: ClientModule<Props> = (props, surface) => {
     if (event.type !== 'up' || event.button !== 'left') {
       return
     }
+    // A picture in the conversation has no badge and no margin: any click on
+    // it opens the file.
+    if (props.path) {
+      surface.post({ path: props.path, action: 'open' })
+      return
+    }
     const x = event.fine?.x ?? event.x + 0.5
     const y = event.fine?.y ?? event.y + 0.5
     if (props.badge && props.columns && isCloseHit(x, y, props.columns, props.badge)) {
-      surface.post({ n: props.n, action: 'remove' })
+      surface.post({ n: props.n ?? 0, action: 'remove' })
     } else if (!props.columns || isOnPicture(x, y, props.columns)) {
-      surface.post({ n: props.n, action: 'open' })
+      surface.post({ n: props.n ?? 0, action: 'open' })
     }
   })
   return surface.elements.Box({})

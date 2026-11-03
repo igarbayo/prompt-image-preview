@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { isCloseHit, isOnPicture } from './click'
+import { imageBlocks, imagePaths, matchSent, messageKey, messageSizeFor } from './messages'
 import { placeholders, sizeFor, withoutPlaceholder } from './register'
 
 const BAND = {
@@ -93,4 +94,65 @@ test('pressing the close button takes the image out of the prompt', async ($, on
 
   expect(filled).toMatchObject({ text: 'see [Image #1]', mode: 'replace', cursor: 14 })
   expect(stored.map(one => one.n)).toEqual([1])
+})
+
+test('image paths are read from a reply, once each, and URLs are left alone', () => {
+  expect(imagePaths('Saved it to /tmp/out/cat.png.')).toEqual(['/tmp/out/cat.png'])
+  expect(imagePaths('![chart](/Users/me/chart.jpg) and ~/Desktop/a.webp')).toEqual(['/Users/me/chart.jpg', '~/Desktop/a.webp'])
+  expect(imagePaths('`/tmp/a.png` again /tmp/a.png')).toEqual(['/tmp/a.png'])
+  expect(imagePaths('see https://example.com/x.png or ./rel/y.png or file.png')).toEqual([])
+  expect(imagePaths('no images here /tmp/notes.txt')).toEqual([])
+})
+
+test('a picture in the conversation is drawn at 60% of the room it could fill, keeping its proportions', () => {
+  expect(messageSizeFor({ width: 1600, height: 900 }, 120)).toEqual({ columns: 38, rows: 11 })
+  expect(messageSizeFor({ width: 1600, height: 900 }, 50)).toEqual({ columns: 28, rows: 8 })
+  expect(messageSizeFor({ width: 800, height: 1600 }, 120)).toEqual({ columns: 14, rows: 14 })
+  expect(messageSizeFor({ width: 160, height: 160 }, 120)).toEqual({ columns: 12, rows: 6 })
+  expect(messageSizeFor({ width: 0, height: 0 }, 120)).toEqual({ columns: 38, rows: 5 })
+})
+
+test('message rows pair with sent messages by text, in order, without the image markers', () => {
+  const list = [
+    { text: '[Image #1] look', images: [] },
+    { text: '[Image #2] look', images: [] },
+  ]
+  const held = new Map<string, number>()
+  expect(messageKey('[Image #1]  look  [Image #2]')).toBe('look')
+  expect(matchSent(list, 'a', '[Image #1] look', held)).toBe(0)
+  expect(matchSent(list, 'b', 'look', held)).toBe(1)
+  expect(matchSent(list, 'a', '[Image #1] look', held)).toBe(0)
+  expect(matchSent(list, 'c', 'something else', held)).toBe(-1)
+})
+
+test('image blocks are found in Read and MCP results', () => {
+  expect(imageBlocks({ type: 'image', file: { base64: 'AAA', type: 'image/png' } })).toEqual(['AAA'])
+  expect(imageBlocks([{ type: 'text', text: 'hi' }, { type: 'image', data: 'BBB', mimeType: 'image/png' }])).toEqual(['BBB'])
+  expect(imageBlocks({ stdout: 'no image', stderr: '' })).toEqual([])
+})
+
+test('a sent message with images draws them under its row', async ($, on) => {
+  const sentList = [{ text: '[Image #1] what is this', images: [{ path: '/tmp/sent/1.png', width: 800, height: 600 }] }]
+  on('state.get', (_$, e) => ({
+    value: { value: (e as { key?: string }).key === 'sent' ? sentList : [], version: 1 },
+  }))
+  on('fs.exists', () => ({ value: true }))
+  on('session.id', () => ({ value: 'test-session' }))
+  on('env.get', () => ({ value: '/Users/test' }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: 'pixelWidth: 800\npixelHeight: 600\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('fs.read', () => ({ value: { base64: 'iVBORw0KGgo=' } }))
+  on('ui.render', ($$, e) => {
+    const { Text } = $$.ui.resolve(e)
+    return <Text>row</Text>
+  })
+
+  const ui = await $.ui.mount({
+    plugin: 'prompt-image-preview',
+    component: 'UserMessage',
+    surface: 'terminal',
+    props: { text: '[Image #1] what is this', origin: { kind: 'composer' }, isExpanded: false },
+  })
+
+  expect(await ui.find({ type: 'Button', key: 'open0' })).toBeTruthy()
+  await ui.unmount()
 })
